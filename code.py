@@ -9,6 +9,10 @@ from adafruit_midi.note_on import NoteOn
 from time import sleep
 import asyncio
 
+class State:
+    def __init__(self):
+        self.notesOn = [False for i in range(12)]
+        
 SDA = board.GP8
 SCL = board.GP9
 i2c = busio.I2C(SCL, SDA)
@@ -24,31 +28,37 @@ usb_midi = adafruit_midi.MIDI(
     out_channel=0
     )
 
-octave = 1
-keys_pressed = {}
+MAJOR = [2, 1, 2, 2, 1, 2, 2, 2, 1, 2, 2]
+A440 = 69
 
+def getNote(x):
+    ret = A440
+    for i in range(x):
+        ret += MAJOR[i]
+    
+    return ret
+        
 async def midiNoteOn(x):
-    if x not in keys_pressed:
-        usb_midi.send(NoteOn(x, 127))
-        keys_pressed[x] = True
-        await asyncio.sleep(1)
-        usb_midi.send(NoteOff(x, 127))
-        del(keys_pressed[x])
+    usb_midi.send(NoteOn(getNote(x), 127))
     
 async def midiNoteOff(x):
-    usb_midi.send(NoteOff(x, 127))
+    usb_midi.send(NoteOff(getNote(x), 127))
                 
 async def main():
-    # Loop forever testing each input and printing when they're touched.
+    state = State()
+    
     while True:
-        # Loop through all 12 inputs (0-11).
         for i in range(12):
-            # Call is_touched and pass it then number of the input.  If it's touched
-            # it will return True, otherwise it will return False.
             if mpr121[i].value:
-                print("Input {} touched!".format(i))
-                note_task = asyncio.create_task(midiNoteOn(65 + i))
-         
+                if not state.notesOn[i]:
+                    note_task = asyncio.create_task(midiNoteOn(i))
+                    state.notesOn[i] = True
+                    print("Input {} touched!".format(i))
+            elif state.notesOn[i]:
+                state.notesOn[i] = False
+                asyncio.create_task(midiNoteOff(i))
+                print("Turning off ".format(i))
+                
         await asyncio.sleep(0)
     
 asyncio.run(main())
