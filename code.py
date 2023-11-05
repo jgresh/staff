@@ -13,17 +13,25 @@ import asyncio
 
 DIATONIC = [2, 2, 1, 2, 2, 2, 1]
 
+class Key:
+    def __init__(self, sharp=True, count=0):
+        self.sharp = sharp
+        self.count = count
+        self.rotation = 3 * count
+        if not sharp:
+            self.rotation *= -1
+        
+    def c_is_sharp(self):
+        self.sharp and self.count >= 2
+            
 class State:
-    def __init__(self, key = 0):
+    def __init__(self, sharp, count):
         self.notesOn = [False for i in range(12)]
-        self.clef = rotate(DIATONIC, key)
-        self.base = 60 # middle c
-        if key > 3:
+        self.base = 60 # middle c - 60, low e - 40
+        self.key = Key(sharp, count)
+        if self.key.c_is_sharp():
             self.base += 1
-        #self.clef = BASS
-        #self.base = 40 # low e
-        self.key = key
-        self.accidental = 0
+        self.clef = rotate(DIATONIC, self.key.rotation)
         
 SDA = board.GP8
 SCL = board.GP9
@@ -74,7 +82,7 @@ async def midiNoteOff(x):
     usb_midi.send(NoteOff(x, 127))
                 
 async def main():
-    state = State(6)
+    state = State(False, 2)
     while True:
         for i in range(12):
             if mpr121[i].value:
