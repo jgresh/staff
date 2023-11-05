@@ -1,5 +1,7 @@
 import time
+from collections import deque
 import board
+import digitalio
 import busio
 import adafruit_mpr121
 import adafruit_midi
@@ -9,12 +11,28 @@ from adafruit_midi.note_on import NoteOn
 from time import sleep
 import asyncio
 
+DIATONIC = [2, 2, 1, 2, 2, 2, 1]
+
 class State:
-    def __init__(self):
+    def __init__(self, key = 0):
         self.notesOn = [False for i in range(12)]
+        self.clef = rotate(DIATONIC, key)
+        self.base = 60 # middle c
+        if key > 3:
+            self.base += 1
+        #self.clef = BASS
+        #self.base = 40 # low e
+        self.key = key
+        self.accidental = 0
         
 SDA = board.GP8
 SCL = board.GP9
+
+UP = digitalio.DigitalInOut(board.GP26)
+UP.switch_to_input(pull=digitalio.Pull.DOWN)
+DOWN = digitalio.DigitalInOut(board.GP27)
+DOWN.switch_to_input(pull=digitalio.Pull.DOWN)
+
 i2c = busio.I2C(SCL, SDA)
 if(i2c.try_lock()):
     print("i2c.scan(): " + str(i2c.scan()))
@@ -28,36 +46,46 @@ usb_midi = adafruit_midi.MIDI(
     out_channel=0
     )
 
-MAJOR = [2, 1, 2, 2, 1, 2, 2, 2, 1, 2, 2]
-A440 = 69
+def rotate(seq, n):
+    n = n % len(seq)
+    return seq[n:] + seq[:n]
 
-def getNote(x):
-    ret = A440
-    for i in range(x):
-        ret += MAJOR[i]
+def getNote(x, state):
+    # reverse input pins
+    x = 12 - x
     
-    return ret
+    accidental = 0
+    if UP.value:
+        accidental = 1
+
+    if DOWN.value:
+        accidental = -1
+    
+    ret = state.base
+    for i in range(x):
+        ret += state.clef[i % len(DIATONIC)]
+    
+    return ret + accidental
         
 async def midiNoteOn(x):
-    usb_midi.send(NoteOn(getNote(x), 127))
+    usb_midi.send(NoteOn(x, 127))
     
 async def midiNoteOff(x):
-    usb_midi.send(NoteOff(getNote(x), 127))
+    usb_midi.send(NoteOff(x, 127))
                 
 async def main():
-    state = State()
-    
+    state = State(6)
     while True:
         for i in range(12):
             if mpr121[i].value:
                 if not state.notesOn[i]:
-                    note_task = asyncio.create_task(midiNoteOn(i))
+                    note_task = asyncio.create_task(midiNoteOn(getNote(i, state)))
                     state.notesOn[i] = True
-                    print("Input {} touched!".format(i))
+                    print("{} on".format(i))
             elif state.notesOn[i]:
                 state.notesOn[i] = False
-                asyncio.create_task(midiNoteOff(i))
-                print("Turning off ".format(i))
+                asyncio.create_task(midiNoteOff(getNote(i, state)))
+                print("{} off".format(i))
                 
         await asyncio.sleep(0)
     
