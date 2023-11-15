@@ -1,5 +1,4 @@
 import time
-from collections import deque
 import board
 import digitalio
 import busio
@@ -14,24 +13,26 @@ import asyncio
 DIATONIC = [2, 2, 1, 2, 2, 2, 1]
 
 class Key:
-    def __init__(self, sharp=True, count=0):
-        self.sharp = sharp
-        self.count = count
-        self.rotation = 3 * count
-        if not sharp:
-            self.rotation *= -1
-        
+    def __init__(self, name):
+        self.name = name
+        self.rotation = 3 * self.count()
+    
+    def count(self):
+        mapping = {'C': 0, 'G': 1, 'D': 2, 'A': 3, 'E': 4, 'B': 5, 'F#': 6, 'C#': 7}
+        mapping.update({'F': -1, 'Bb': -2, 'Eb': -3, 'Ab': -4, 'Db': -5, 'Gb': -6, 'Cb': -7})
+        return mapping[self.name]
+    
     def c_is_sharp(self):
-        self.sharp and self.count >= 2
-            
+        self.count() > 1
+    
 class State:
-    def __init__(self, sharp, count):
+    def __init__(self, keyname):
         self.notesOn = [False for i in range(12)]
         self.base = 60 # middle c - 60, low e - 40
-        self.key = Key(sharp, count)
-        if self.key.c_is_sharp():
+        self.key = Key(keyname)
+        if self.key.c_is_sharp:
             self.base += 1
-        self.clef = rotate(DIATONIC, self.key.rotation)
+        self.scale = rotate(DIATONIC, self.key.rotation)
         
 SDA = board.GP8
 SCL = board.GP9
@@ -60,7 +61,7 @@ def rotate(seq, n):
 
 def getNote(x, state):
     # reverse input pins
-    x = 12 - x
+    #x = 12 - x
     
     accidental = 0
     if UP.value:
@@ -71,7 +72,7 @@ def getNote(x, state):
     
     ret = state.base
     for i in range(x):
-        ret += state.clef[i % len(DIATONIC)]
+        ret += state.scale[i % len(DIATONIC)]
     
     return ret + accidental
         
@@ -82,7 +83,7 @@ async def midiNoteOff(x):
     usb_midi.send(NoteOff(x, 127))
                 
 async def main():
-    state = State(False, 2)
+    state = State('C#')
     while True:
         for i in range(12):
             if mpr121[i].value:
@@ -98,3 +99,4 @@ async def main():
         await asyncio.sleep(0)
     
 asyncio.run(main())
+
