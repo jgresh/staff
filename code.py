@@ -5,12 +5,14 @@ import busio
 import adafruit_mpr121
 import adafruit_midi
 import usb_midi
+import rotaryio
 from adafruit_midi.note_off import NoteOff
 from adafruit_midi.note_on import NoteOn
 from time import sleep
 import asyncio
 
 DIATONIC = [2, 2, 1, 2, 2, 2, 1]
+CIRCLE5 = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'Ab', 'Eb', 'Bb', 'F']
 
 class Key:
     def __init__(self, name):
@@ -30,7 +32,7 @@ class State:
         self.notesOn = [False for i in range(12)]
         self.base = 60 # middle c - 60, low e - 40
         self.key = Key(keyname)
-        if self.key.c_is_sharp:
+        if self.key.c_is_sharp():
             self.base += 1
         self.scale = rotate(DIATONIC, self.key.rotation)
         
@@ -54,6 +56,9 @@ usb_midi = adafruit_midi.MIDI(
     midi_out=usb_midi.ports[1],
     out_channel=0
     )
+
+encoder = rotaryio.IncrementalEncoder(board.GP2, board.GP3, divisor=8)
+
 
 def rotate(seq, n):
     n = n % len(seq)
@@ -83,7 +88,8 @@ async def midiNoteOff(x):
     usb_midi.send(NoteOff(x, 127))
                 
 async def main():
-    state = State('C#')
+    state = State('C')
+    last_position = encoder.position % 12
     while True:
         for i in range(12):
             if mpr121[i].value:
@@ -95,7 +101,12 @@ async def main():
                 state.notesOn[i] = False
                 asyncio.create_task(midiNoteOff(getNote(i, state)))
                 print("{} off".format(i))
-                
+             
+        if last_position != encoder.position % 12:
+            state = State(CIRCLE5[last_position])
+            print(CIRCLE5[last_position])
+            last_position = encoder.position % 12
+            
         await asyncio.sleep(0)
     
 asyncio.run(main())
